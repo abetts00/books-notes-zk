@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.pdf
+*.tar.gz
+duplicates.md
+processing_log.json
+concepts_dictionary.json
+PrintableApplication20230517.pdf
