@@ -1,150 +1,162 @@
-# Heroic Zettelkasten
+# book-notes-zk
 
-Convert Philosopher's Notes, Shortform, and other book summary PDFs into an interconnected Obsidian knowledge base — with entity extraction, auto-linking, concept enrichment via Claude API, and an MCP server so any AI assistant can query and extend your vault.
+Turn distilled book summary PDFs into an interconnected Obsidian knowledge base — with entity extraction, auto-linking, concept enrichment via Claude API, and an MCP server so any AI assistant can query and extend your vault.
 
-Built around Brian Johnson's Philosopher's Notes library and the [Karpathy LLM knowledge base pattern](https://karpathy.ai).
+Supports **Philosopher's Notes, Shortform, ReadingGraphics, getAbstract**, and any generic book notes PDF.
 
-## What it does
+## Supported formats
 
-Feed it book summary PDFs → get a living knowledge graph:
+| Service | Format | Status |
+|---------|--------|--------|
+| [Philosopher's Notes](https://www.heroic.us) | 2-column, sidebar quotes | Tested on 100+ PDFs |
+| [Shortform](https://shortform.com) | Full-width, chapter-based | Ready |
+| [ReadingGraphics](https://readingraphics.com) | Mixed text + infographic | Ready |
+| [getAbstract](https://getabstract.com) | Structured business summaries | Ready |
+| Generic | Any book notes PDF | Auto-detect fallback |
 
-- **Source notes** with inline `[[wiki-links]]` to every person, book, and concept mentioned
-- **Atomic notes** per section (one idea per note, Zettelkasten-style)
-- **Concept notes** with definitions pulled from every source that mentions them, plus space for your own synthesis
-- **Entity stubs** for people, books, and concepts — with bidirectional backlinks
-- **Concept dictionary** that grows across PDFs with fuzzy alias matching
-- **MCP server** so Claude Desktop, Cursor, or any MCP-compatible AI can process PDFs and query your vault
+Format is auto-detected from page content. Override with `--profile` if needed.
+
+## What it produces
+
+Feed it PDFs → get a living knowledge graph in Obsidian:
+
+- **Source notes** — one per book, with `[[wiki-links]]` to every person, book, and concept mentioned
+- **Atomic notes** — one per section, Zettelkasten-style
+- **Concept notes** — definitions pulled from every source that mentions them, plus space for your own synthesis
+- **Entity stubs** — people, books, and concepts with bidirectional backlinks
+- **Concept dictionary** — grows across PDFs with fuzzy alias matching
 
 ## Quick start
 
 ```bash
-git clone https://github.com/abetts00/heroic-zettlekasten
-cd heroic-zettlekasten
+git clone https://github.com/abetts00/book-notes-zk
+cd book-notes-zk
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...
 
-# Process a PDF into your vault
-python scripts/pdf_to_obsidian.py book.pdf --vault ~/Notes --profile philosophers_notes
+# Set up a new vault
+python scripts/setup.py --vault "C:/path/to/your/obsidian/vault"
+
+# Drop your PDFs into the vault
+# vault/raw/pdfs/philosophers-notes/
+# vault/raw/pdfs/shortform/
+# vault/raw/pdfs/getabstract/
+# etc.
+
+# Run the pipeline (auto-detects format, skips already-processed)
+cd your-vault
+python path/to/book-notes-zk/scripts/pdf_to_obsidian.py raw/pdfs/**/*.pdf --vault . --resume
 
 # Enrich concept notes with definitions from source notes
-python scripts/enrich_concepts.py --vault ~/Notes --min-sources 3
-
-# Find and review duplicate notes
-python scripts/find_duplicates.py --vault ~/Notes
+python path/to/book-notes-zk/scripts/enrich_concepts.py --vault . --min-sources 3
 ```
 
 ## Vault structure
 
 ```
 your-vault/
-├── CLAUDE.md                        <- Schema (auto-created on first run)
-├── concepts_dictionary.json         <- Grows with every PDF
-├── raw/pdfs/philosophers-notes/     <- Drop PDFs here
-├── Sources/                         <- One folder per processed book
+├── CLAUDE.md                        ← Schema (auto-created by setup)
+├── concepts_dictionary.json
+├── raw/                             ← Drop PDFs here (immutable)
+│   ├── pdfs/
+│   │   ├── philosophers-notes/
+│   │   ├── shortform/
+│   │   ├── readingraphics/
+│   │   ├── getabstract/
+│   │   └── other/
+│   └── clippings/
+├── Sources/                         ← One folder per processed book
 │   └── Atomic Habits/
-│       ├── Atomic Habits.md         <- Literature note
-│       ├── identity.md              <- Atomic note per section
+│       ├── Atomic Habits.md         ← Literature note
+│       ├── identity.md              ← Atomic note per section
 │       └── ...
-├── Concepts/                        <- Where learning happens
-│   └── antifragility.md            <- Definitions from Sources + your synthesis
-├── People/                          <- Person stubs
-├── Books/                           <- Referenced book stubs
-└── permanent/                       <- Your own notes (LLM never writes here)
+├── Concepts/                        ← Where learning happens
+├── People/
+├── Books/
+└── permanent/                       ← Your own notes (pipeline never writes here)
     ├── insights/
     └── projects/
 ```
 
 ## Concept notes
 
-Every concept note follows this structure — the machine fills in the sources, you fill in the synthesis:
+The machine fills in the sources, you fill in the synthesis:
 
 ```markdown
 ## Definitions from Sources
 **[[Atomic Habits]]:** Identity change is the North Star of habit change...
-**[[The Daily Stoic]]:** ...
+**[[The Daily Stoic]]:** The Stoics understood this concept as...
+**[[Grit]]:** Duckworth frames this as the foundation of perseverance...
 
 ## Cross-Source Synthesis
-How this concept appears and evolves across multiple sources.
+How this concept appears across multiple authors and traditions.
 
 ## My Synthesis
-Your space. What do YOU actually think about this?
+Your space — what do YOU actually think about this?
 ```
 
-Concept maturity is tracked automatically: `stub` → `developing` (5+ sources) → `evergreen` (15+ sources or you've written your synthesis).
-
-## Supported PDF formats
-
-| Format | Source | Status |
-|--------|--------|--------|
-| Philosopher's Notes | Brian Johnson / Heroic | Tested on 100+ PDFs |
-| Shortform | shortform.com | Profile ready |
-| ReadingGraphics | readingraphics.com | Profile ready |
-| getAbstract | getabstract.com | Profile ready |
-| Generic | Any book notes PDF | Fallback |
-
-Auto-detects format from page content. Override with `--profile`.
+Concept maturity is tracked automatically:
+- `stub` — created, < 5 sources
+- `developing` — 5+ sources, definitions populated
+- `evergreen` — 15+ sources or you've written your own synthesis
 
 ## MCP server
 
-Gives any MCP-compatible AI assistant direct access to your vault.
+Gives any MCP-compatible AI assistant (Claude Desktop, Cursor, Windsurf, etc.) direct access to your vault.
 
-**Tools exposed:**
+**Tools:**
 | Tool | What it does |
 |------|-------------|
 | `process_pdf` | Run the ingestion pipeline on a PDF |
 | `enrich_concepts` | Fill Definitions from Sources for unenriched concepts |
 | `search_vault` | Full-text search across concepts, sources, people, books |
 | `get_note` | Read any note by name or path |
-| `vault_stats` | Overview of vault size, concept maturity, enrichment progress |
+| `vault_stats` | Overview of vault size, maturity breakdown, enrichment progress |
 
-**Setup (Claude Desktop):**
-
-Add to `claude_desktop_config.json`:
+**Setup (Claude Desktop)** — add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "heroic-zk": {
+    "book-notes-zk": {
       "command": "python",
-      "args": ["path/to/heroic-zettlekasten/mcp_server/server.py"],
+      "args": ["path/to/book-notes-zk/mcp_server/server.py"],
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-...",
-        "ZK_VAULT": "C:/path/to/your/obsidian/vault"
+        "ZK_VAULT": "C:/path/to/your/vault"
       }
     }
   }
 }
 ```
 
-**Setup (other MCP clients):** Same pattern — point `command` at `mcp_server/server.py` and set `ZK_VAULT`.
-
 ## As a Claude Code skill
 
-Drop into your project's `.claude/skills/` directory:
+The setup script installs the skill automatically. Or drop it manually:
 
 ```
-your-project/.claude/skills/pdf-to-obsidian/
+your-vault/.claude/skills/book-notes-zk/
 ├── SKILL.md
 ├── references/
 └── scripts/
 ```
 
-Then tell Claude Code: *"Process these PDFs into Obsidian notes"* or *"Enrich my concept files"*.
+Then tell Claude Code: *"Process these PDFs into Obsidian notes"*, *"Enrich my concept files"*, or *"Find duplicate notes in my vault"*.
 
-## Scripts reference
+## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/pdf_to_obsidian.py` | Main ingestion pipeline |
+| `scripts/setup.py` | First-run vault setup |
+| `scripts/pdf_to_obsidian.py` | PDF ingestion pipeline |
 | `scripts/enrich_concepts.py` | Enrich concept notes with Claude API |
-| `scripts/update_concept_template.py` | Migrate concept files to new template |
-| `scripts/find_duplicates.py` | Find fuzzy duplicate notes across vault |
+| `scripts/update_concept_template.py` | Migrate concept files to current schema |
+| `scripts/find_duplicates.py` | Find fuzzy duplicate notes |
 | `scripts/clean_vault.py` | Vault maintenance utilities |
 
-## CLI options (pdf_to_obsidian.py)
+## Pipeline options
 
 ```
---vault PATH          Obsidian vault root (default: ./vault)
---profile ID          auto|philosophers_notes|shortform|readingraphics|getabstract|generic
+--vault PATH          Obsidian vault root
+--profile ID          auto | philosophers_notes | shortform | readingraphics | getabstract | generic
 --model MODEL         Claude model (default: claude-sonnet-4-6)
 --resume              Skip already-processed files
 --no-atomic           Disable per-section atomic notes
@@ -153,10 +165,10 @@ Then tell Claude Code: *"Process these PDFs into Obsidian notes"* or *"Enrich my
 --delay SECONDS       Rate limit between API calls (default: 1.0)
 ```
 
-## Cost estimate
+## Cost
 
-Using Claude Sonnet for ingestion: ~$0.01-0.02 per PDF.
-100 PDFs ≈ $1-2. Concept enrichment adds ~$0.005 per concept.
+Using Claude Sonnet for ingestion: ~$0.01–0.02 per PDF.
+100 PDFs ≈ $1–2. Concept enrichment adds ~$0.005 per concept.
 
 ## Dependencies
 
