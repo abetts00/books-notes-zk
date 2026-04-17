@@ -178,6 +178,10 @@ Using Claude Sonnet for ingestion: ~$0.01–0.02 per PDF.
 - [rapidfuzz](https://github.com/maxbachmann/RapidFuzz) — Fuzzy concept matching
 - [mcp](https://github.com/modelcontextprotocol/python-sdk) — MCP server
 
+## Security
+
+Before deploying the MCP server broadly, review [`SECURITY.md`](SECURITY.md) for hardening guidance and operational controls.
+
 ## License
 
 MIT
