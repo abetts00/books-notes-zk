@@ -38,8 +38,35 @@ from mcp.server.fastmcp import FastMCP
 # Vault path — set via env var or falls back to current directory
 VAULT = Path(os.environ.get("ZK_VAULT", "."))
 SCRIPTS = Path(__file__).parent.parent / "scripts"
+ALLOWED_PROFILES = {
+    "auto",
+    "philosophers_notes",
+    "shortform",
+    "readingraphics",
+    "getabstract",
+    "generic",
+}
+PROCESS_TIMEOUT_SECONDS = 600
+MAX_NOTE_SIZE_BYTES = 1_000_000
 
 mcp = FastMCP("heroic-zk")
+
+
+def _resolve_vault_path(vault: str) -> Path:
+    """Resolve and validate vault path."""
+    vault_path = Path(vault).expanduser() if vault else VAULT
+    return vault_path.resolve()
+
+
+def _resolve_in_vault(vault_path: Path, target: str) -> Path:
+    """
+    Resolve a target path and guarantee it stays inside the vault root.
+    Raises ValueError on traversal attempts.
+    """
+    resolved = (vault_path / target).resolve()
+    if vault_path not in (resolved, *resolved.parents):
+        raise ValueError("Path escapes configured vault root.")
+    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -61,21 +88,34 @@ def process_pdf(
         profile:  Layout profile — auto | philosophers_notes | shortform | readingraphics | getabstract | generic
         vault:    Path to the Obsidian vault (defaults to ZK_VAULT env var)
     """
-    vault_path = Path(vault) if vault else VAULT
+    vault_path = _resolve_vault_path(vault)
     pdf = Path(pdf_path)
     if not pdf.is_absolute():
-        pdf = vault_path / "raw" / "pdfs" / "philosophers-notes" / pdf
+        try:
+            pdf = _resolve_in_vault(vault_path, f"raw/pdfs/philosophers-notes/{pdf}")
+        except ValueError as exc:
+            return f"Invalid PDF path: {exc}"
+    else:
+        pdf = pdf.resolve()
+        if vault_path not in (pdf, *pdf.parents):
+            return "Invalid PDF path: absolute paths must be inside the configured vault."
+
+    if profile not in ALLOWED_PROFILES:
+        return f"Invalid profile '{profile}'. Allowed: {', '.join(sorted(ALLOWED_PROFILES))}"
 
     if not pdf.exists():
         return f"PDF not found: {pdf}"
 
     script = SCRIPTS / "pdf_to_obsidian.py"
-    result = subprocess.run(
-        [sys.executable, str(script), str(pdf),
-         "--vault", str(vault_path),
-         "--profile", profile],
-        capture_output=True, text=True
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), str(pdf),
+             "--vault", str(vault_path),
+             "--profile", profile],
+            capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        return f"PDF processing timed out after {PROCESS_TIMEOUT_SECONDS} seconds."
     output = result.stdout + result.stderr
     return output.strip() or "Pipeline completed."
 
@@ -99,15 +139,20 @@ def enrich_concepts(
         limit:       Max number of concepts to process in one run
         vault:       Path to the Obsidian vault (defaults to ZK_VAULT env var)
     """
-    vault_path = Path(vault) if vault else VAULT
+    vault_path = _resolve_vault_path(vault)
     script = SCRIPTS / "enrich_concepts.py"
-    result = subprocess.run(
-        [sys.executable, str(script),
-         "--vault", str(vault_path),
-         "--min-sources", str(min_sources),
-         "--limit", str(limit)],
-        capture_output=True, text=True
-    )
+    if min_sources < 1 or limit < 1:
+        return "min_sources and limit must both be >= 1."
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script),
+             "--vault", str(vault_path),
+             "--min-sources", str(min_sources),
+             "--limit", str(limit)],
+            capture_output=True, text=True, timeout=PROCESS_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        return f"Enrichment timed out after {PROCESS_TIMEOUT_SECONDS} seconds."
     output = result.stdout + result.stderr
     return output.strip() or "Enrichment completed."
 
@@ -130,7 +175,7 @@ def search_vault(
         search_in: Where to search — concepts | sources | people | books | all
         vault:     Path to the Obsidian vault (defaults to ZK_VAULT env var)
     """
-    vault_path = Path(vault) if vault else VAULT
+    vault_path = _resolve_vault_path(vault)
 
     folder_map = {
         "concepts": ["Concepts"],
@@ -194,17 +239,27 @@ def get_note(
                "Sources/Atomic Habits/Atomic Habits.md"
         vault: Path to the Obsidian vault (defaults to ZK_VAULT env var)
     """
-    vault_path = Path(vault) if vault else VAULT
+    vault_path = _resolve_vault_path(vault)
 
     # Try direct path first
-    candidate = vault_path / note
+    try:
+        candidate = _resolve_in_vault(vault_path, note)
+    except ValueError as exc:
+        return f"Invalid note path: {exc}"
     if candidate.exists():
+        if candidate.stat().st_size > MAX_NOTE_SIZE_BYTES:
+            return f"Note too large to return safely ({candidate.stat().st_size} bytes)."
         return candidate.read_text(encoding="utf-8")
 
     # Try appending .md
     if not note.endswith(".md"):
-        candidate = vault_path / (note + ".md")
+        try:
+            candidate = _resolve_in_vault(vault_path, note + ".md")
+        except ValueError as exc:
+            return f"Invalid note path: {exc}"
         if candidate.exists():
+            if candidate.stat().st_size > MAX_NOTE_SIZE_BYTES:
+                return f"Note too large to return safely ({candidate.stat().st_size} bytes)."
             return candidate.read_text(encoding="utf-8")
 
     # Search for the name across folders
@@ -212,6 +267,8 @@ def get_note(
     for folder in ["Concepts", "Sources", "People", "Books"]:
         for md_file in (vault_path / folder).rglob("*.md"):
             if md_file.stem.lower() == note_lower:
+                if md_file.stat().st_size > MAX_NOTE_SIZE_BYTES:
+                    return f"Note too large to return safely ({md_file.stat().st_size} bytes)."
                 return md_file.read_text(encoding="utf-8")
 
     return f"Note not found: {note}"
@@ -230,7 +287,7 @@ def vault_stats(vault: str = "") -> str:
     Args:
         vault: Path to the Obsidian vault (defaults to ZK_VAULT env var)
     """
-    vault_path = Path(vault) if vault else VAULT
+    vault_path = _resolve_vault_path(vault)
 
     def count_files(folder):
         p = vault_path / folder
