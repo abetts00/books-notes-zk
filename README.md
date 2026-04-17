@@ -1,4 +1,4 @@
-# book-notes-zk
+# books-notes-zk
 
 Turn distilled book summary PDFs into an interconnected Obsidian knowledge base — with entity extraction, auto-linking, concept enrichment via Claude API, and an MCP server so any AI assistant can query and extend your vault.
 
@@ -29,8 +29,8 @@ Feed it PDFs → get a living knowledge graph in Obsidian:
 ## Quick start
 
 ```bash
-git clone https://github.com/abetts00/book-notes-zk
-cd book-notes-zk
+git clone https://github.com/abetts00/books-notes-zk
+cd books-notes-zk
 pip install -r requirements.txt
 
 # Set up a new vault
@@ -44,10 +44,10 @@ python scripts/setup.py --vault "C:/path/to/your/obsidian/vault"
 
 # Run the pipeline (auto-detects format, skips already-processed)
 cd your-vault
-python path/to/book-notes-zk/scripts/pdf_to_obsidian.py raw/pdfs/**/*.pdf --vault . --resume
+python path/to/books-notes-zk/scripts/pdf_to_obsidian.py raw/pdfs/**/*.pdf --vault . --resume
 
 # Enrich concept notes with definitions from source notes
-python path/to/book-notes-zk/scripts/enrich_concepts.py --vault . --min-sources 3
+python path/to/books-notes-zk/scripts/enrich_concepts.py --vault . --min-sources 3
 ```
 
 ## Vault structure
@@ -116,9 +116,9 @@ Gives any MCP-compatible AI assistant (Claude Desktop, Cursor, Windsurf, etc.) d
 ```json
 {
   "mcpServers": {
-    "book-notes-zk": {
+    "books-notes-zk": {
       "command": "python",
-      "args": ["path/to/book-notes-zk/mcp_server/server.py"],
+      "args": ["path/to/books-notes-zk/mcp_server/server.py"],
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-...",
         "ZK_VAULT": "C:/path/to/your/vault"
@@ -133,7 +133,7 @@ Gives any MCP-compatible AI assistant (Claude Desktop, Cursor, Windsurf, etc.) d
 The setup script installs the skill automatically. Or drop it manually:
 
 ```
-your-vault/.claude/skills/book-notes-zk/
+your-vault/.claude/skills/books-notes-zk/
 ├── SKILL.md
 ├── references/
 └── scripts/
